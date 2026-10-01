@@ -11,6 +11,8 @@ Tables (all created in nodes.db)
                    created_at
   reset_tokens   – token, username, expires_at, used
   invite_codes   – code, created_by (admin), used_by, expires_at, used
+  emergency_contacts – owner username, name (encrypted), phone (encrypted),
+                   relationship, created_at
 
 Sensitive fields (email, full_name) are Fernet-encrypted at rest.
 Passwords are bcrypt-hashed (never stored in plain text).
@@ -67,7 +69,20 @@ def init_auth_db():
             expires_at  TEXT    NOT NULL,
             used        INTEGER NOT NULL DEFAULT 0
         );
+
+        CREATE TABLE IF NOT EXISTS emergency_contacts (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            owner           TEXT    NOT NULL COLLATE NOCASE,
+            name_enc        TEXT    NOT NULL,
+            phone_enc       TEXT    NOT NULL,
+            relationship    TEXT    NOT NULL DEFAULT '',
+            created_at      TEXT    NOT NULL
+        );
         """)
+        # Older databases: add the phone column to auth_users if it is missing
+        cols = [r[1] for r in con.execute("PRAGMA table_info(auth_users)")]
+        if "phone_enc" not in cols:
+            con.execute("ALTER TABLE auth_users ADD COLUMN phone_enc TEXT NOT NULL DEFAULT ''")
 
 
 # ──────────────────────────────────────
@@ -209,6 +224,31 @@ def update_password(username: str, new_password: str) -> bool:
         return cur.rowcount > 0
 
 
+def get_phone(username: str) -> str:
+    with _conn() as con:
+        row = con.execute(
+            "SELECT phone_enc FROM auth_users WHERE username = ? COLLATE NOCASE", (username,)
+        ).fetchone()
+    if not row or not row[0]:
+        return ""
+    try:
+        return decrypt_field(row[0])
+    except Exception:
+        return ""
+
+
+def update_profile(username: str, fullname: str, email: str, phone: str) -> bool:
+    """Update the editable profile fields for a user."""
+    with _conn() as con:
+        cur = con.execute(
+            """UPDATE auth_users SET fullname_enc = ?, email_enc = ?, phone_enc = ?
+               WHERE username = ? COLLATE NOCASE""",
+            (encrypt_field(fullname), encrypt_field(email),
+             encrypt_field(phone) if phone else "", username),
+        )
+        return cur.rowcount > 0
+
+
 def promote_to_admin(username: str) -> bool:
     with _conn() as con:
         cur = con.execute(
@@ -219,6 +259,7 @@ def promote_to_admin(username: str) -> bool:
     
 def remove_user(username: str) -> bool:
     with _conn() as con:
+        con.execute("DELETE FROM emergency_contacts WHERE owner = ? COLLATE NOCASE", (username,))
         cur = con.execute(
             "DELETE FROM auth_users WHERE username = ? COLLATE NOCASE",
             (username,),
@@ -332,6 +373,56 @@ def list_invite_codes(admin_username: str) -> list[dict]:
             "used": bool(used),
         })
     return result
+
+
+# ──────────────────────────────────────
+# EMERGENCY CONTACTS
+# ──────────────────────────────────────
+
+def add_emergency_contact(owner: str, name: str, phone: str, relationship: str = "") -> bool:
+    try:
+        with _conn() as con:
+            con.execute(
+                """INSERT INTO emergency_contacts
+                   (owner, name_enc, phone_enc, relationship, created_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (owner, encrypt_field(name), encrypt_field(phone), relationship,
+                 datetime.now(timezone.utc).isoformat()),
+            )
+        return True
+    except Exception as exc:
+        print(f"[auth_database] add_emergency_contact error: {exc}")
+        return False
+
+
+def list_emergency_contacts(owner: str) -> list[dict]:
+    with _conn() as con:
+        rows = con.execute(
+            """SELECT id, name_enc, phone_enc, relationship
+               FROM emergency_contacts WHERE owner = ? COLLATE NOCASE ORDER BY id""",
+            (owner,),
+        ).fetchall()
+    result = []
+    for cid, name_enc, phone_enc, rel in rows:
+        try:
+            result.append({
+                "id": cid,
+                "name": decrypt_field(name_enc),
+                "phone": decrypt_field(phone_enc),
+                "relationship": rel,
+            })
+        except Exception:
+            continue
+    return result
+
+
+def remove_emergency_contact(owner: str, contact_id: int) -> bool:
+    with _conn() as con:
+        cur = con.execute(
+            "DELETE FROM emergency_contacts WHERE id = ? AND owner = ? COLLATE NOCASE",
+            (contact_id, owner),
+        )
+        return cur.rowcount > 0
 
 
 if __name__ == "__main__":

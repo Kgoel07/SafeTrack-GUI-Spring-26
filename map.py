@@ -21,6 +21,9 @@ class MapDisplay(QWidget):
         # It defaults to the initial coordinate but can be changed
         # by `center_on_node` or by passing a location to `update_map`.
         self.current_center = self.coordinate
+        # display preferences (set from App Preferences)
+        self.zoom = 14
+        self.show_sos_radius = True
 
         self.setWindowTitle("SafeTrack Map")
         self.setMinimumSize(800, 600)
@@ -95,7 +98,9 @@ class MapDisplay(QWidget):
 
         return m
 
-    def update_map(self, location = None, zoom_start = 14):
+    def update_map(self, location = None, zoom_start = None):
+        if zoom_start is None:
+            zoom_start = self.zoom
         # If a new location is provided, make it the current center.
         if location is not None:
             self.current_center = location
@@ -155,12 +160,13 @@ class MapDisplay(QWidget):
                 if database.get_status(node) == "SOS":
                     icon_img = os.path.abspath("images/red_icon.png")
                     cluster_type = "SOS"
-                    folium.Circle(
-                        radius=100,
-                        location=cur_gps,
-                        color='crimson',
-                        fill=True
-                    ).add_to(self.m)
+                    if self.show_sos_radius:
+                        folium.Circle(
+                            radius=100,
+                            location=cur_gps,
+                            color='crimson',
+                            fill=True
+                        ).add_to(self.m)
                 folium.Marker(
                     location=cur_gps,
                     popup=f"Node {node}: {cur_gps}",

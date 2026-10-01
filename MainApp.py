@@ -22,6 +22,9 @@ from serial_monitor import Monitor
 from simulating_nodes import Simulate  # for debugging only
 from settings import SettingsPage
 from history_log import HistoryLogPage
+from nodes import NodesPage
+import preferences
+import theme
 
 
 # ═══════════════════════════════════════════════════════
@@ -109,6 +112,7 @@ class SidebarButton(QPushButton):
         if icon_path and os.path.exists(icon_path):
             self.setIcon(QIcon(icon_path))
             self.setIconSize(QSize(20, 20))
+            self._theme_icon_path = icon_path   # lets theme.py tint it in light mode
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFixedHeight(42)
         self._update_style()
@@ -296,9 +300,10 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("SafeTrack")
         self.setMinimumSize(1200, 700)
         self.user = user
+        self.prefs = preferences.load(user.username)
 
         self.port = "COM7"
-        self.hrs = 48
+        self.hrs = self.prefs["retention_hours"]
         monitor = Simulate(self.port, self.hrs)
         monitor.start()
 
@@ -355,6 +360,7 @@ class MainWindow(QMainWindow):
 
         self.sidebar_buttons_info = [
             ("btnMap",           "Map",           img("map_icon.png")),
+            ("btnNodes",         "Nodes",         img("nodes_icon.svg")),
             ("btnNotifications", "Notifications", img("notifications_icon.png")),
             ("btnHistory",       "History && Logs",img("history_icon.png")),
             ("btnSettings",      "Settings",      img("settings_icon.png")),
@@ -418,20 +424,20 @@ class MainWindow(QMainWindow):
         display_name = user.fullname if user.fullname else user.username
         parts = display_name.split()
         initials = (parts[0][0] + (parts[1][0] if len(parts) > 1 else "")) if parts else "?"
-        avatar = AvatarWidget(initials, 36)
-        user_lay.addWidget(avatar)
+        self.avatar = AvatarWidget(initials, 36)
+        user_lay.addWidget(self.avatar)
 
         user_text = QVBoxLayout()
         user_text.setSpacing(1)
         user_text.setContentsMargins(0, 0, 0, 0)
 
-        name_lbl = QLabel(display_name)
-        name_lbl.setStyleSheet("color: #cfd8e8; font-size: 13px; font-weight: 600; border: none;")
+        self.name_lbl = QLabel(display_name)
+        self.name_lbl.setStyleSheet("color: #cfd8e8; font-size: 13px; font-weight: 600; border: none;")
         role_lbl = QLabel("Admin" if user.is_admin else "User")
         role_lbl.setStyleSheet("color: #4a5a72; font-size: 11px; font-weight: 500; border: none;")
 
         user_text.addStretch()
-        user_text.addWidget(name_lbl)
+        user_text.addWidget(self.name_lbl)
         user_text.addWidget(role_lbl)
         user_text.addStretch()
         user_lay.addLayout(user_text)
@@ -505,12 +511,23 @@ class MainWindow(QMainWindow):
         self.settings_page.back_requested.connect(
             lambda: self.on_sidebar_button("btnMap")
         )
+        self.settings_page.preferences_changed.connect(self.apply_preferences)
+        self.settings_page.profile_changed.connect(self._refresh_profile)
+        self.settings_page.account_deleted.connect(self._on_account_deleted)
+        self.settings_page.light_mode_changed.connect(lambda on: theme.apply(self, on))
         self.stacked_layout.addWidget(self.settings_page)       # index 3
         self.blank_pages["btnSettings"] = self.settings_page
 
+        # ── NODES PAGE (all node IDs + latest status from the DB) ──
+        self.nodes_page = NodesPage(user=user)
+        self.nodes_page.viewNodeRequested.connect(self.open_node_on_map)
+        self.nodes_page.load_nodes()
+        self.stacked_layout.addWidget(self.nodes_page)          # index 4
+        self.blank_pages["btnNodes"] = self.nodes_page
+
         # ── BLANK PAGES (Invite, etc.) ──
-        # btnMap=0, btnNotifications=1, btnHistory=2, btnSettings=3 already set
-        _skip = {"btnMap", "btnNotifications", "btnHistory", "btnSettings"}
+        # btnMap=0, btnNotifications=1, btnHistory=2, btnSettings=3, btnNodes=4 already set
+        _skip = {"btnMap", "btnNodes", "btnNotifications", "btnHistory", "btnSettings"}
         for obj_name, label, _ in self.sidebar_buttons_info:
             if obj_name in _skip:
                 continue
@@ -539,6 +556,35 @@ class MainWindow(QMainWindow):
 
         self.stacked_layout.setCurrentIndex(0)
 
+        self.apply_preferences(self.prefs)
+        startup = {"Nodes": "btnNodes", "History": "btnHistory"}.get(self.prefs["startup_page"])
+        if startup:
+            self.on_sidebar_button(startup)
+
+    def apply_preferences(self, prefs: dict):
+        """Apply App Preferences to the running window."""
+        zoom_changed = (prefs["map_zoom"] != self.map_widget.zoom or
+                        prefs["show_sos_radius"] != self.map_widget.show_sos_radius)
+        self.prefs = prefs
+        theme.apply(self, prefs["light_mode"])
+        self.map_widget.zoom = prefs["map_zoom"]
+        self.map_widget.show_sos_radius = prefs["show_sos_radius"]
+        self.nodes_page.set_time_format(prefs["time_format_24h"])
+        if zoom_changed:
+            self.map_widget.update_map()
+
+    def _refresh_profile(self):
+        """Update the sidebar name/avatar after the profile is edited."""
+        display_name = self.user.fullname if self.user.fullname else self.user.username
+        parts = display_name.split()
+        self.avatar.initials = ((parts[0][0] + (parts[1][0] if len(parts) > 1 else "")) if parts else "?").upper()
+        self.avatar.update()
+        self.name_lbl.setText(display_name)
+
+    def _on_account_deleted(self):
+        self.logout_requested.emit()
+        self.close()
+
     # ─────────────────────────────────────
     # SIDEBAR NAVIGATION
     # ─────────────────────────────────────
@@ -566,6 +612,10 @@ class MainWindow(QMainWindow):
                     QTimer.singleShot(400, self.update_notif_badge)
                 except Exception:
                     pass
+            case "btnNodes":
+                self._set_active(name)
+                self.stacked_layout.setCurrentWidget(self.nodes_page)
+                self.nodes_page.load_nodes()
             case "btnHistory":
                 self._set_active(name)
                 self.stacked_layout.setCurrentIndex(2)
@@ -579,6 +629,10 @@ class MainWindow(QMainWindow):
             case "btnInvite":
                 self._generate_invite()
             case "btnLogout":
+                if self.prefs["confirm_logout"]:
+                    resp = QMessageBox.question(self, "Log out", "Are you sure you want to log out?")
+                    if resp != QMessageBox.StandardButton.Yes:
+                        return
                 self.logout_requested.emit()
                 self.close()
             case _:
@@ -621,6 +675,7 @@ class MainWindow(QMainWindow):
             pass
 
     def closeEvent(self, event):
+        theme.reset()
         if hasattr(self, "backend"):
             try:
                 self.backend.requestInterruption()

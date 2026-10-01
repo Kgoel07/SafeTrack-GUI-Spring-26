@@ -75,6 +75,19 @@ def get_nodes(db:str = "nodes.db") -> list:
         data = [row[0] for row in data]
     return data if data else []
 
+# Returns most recent row for every node: [(time, node_id, latitude, longitude, status), ...]
+def get_latest_node_rows(db:str = "nodes.db") -> list:
+    with sqlite3.connect(db) as conn:
+        cur = conn.cursor()
+        cur.execute(f'''SELECT n.time, n.node_id, n.latitude, n.longitude, n.status
+                        FROM nodes n
+                        JOIN (SELECT node_id, MAX(time) AS t FROM nodes GROUP BY node_id) latest
+                          ON n.node_id = latest.node_id AND n.time = latest.t
+                        GROUP BY n.node_id
+                        ORDER BY n.node_id''')
+        data = cur.fetchall()
+    return data
+
 def get_node_info(node_id:int,db:str = "nodes.db") -> list:
     with sqlite3.connect(db) as conn:
         cur = conn.cursor()
