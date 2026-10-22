@@ -7,6 +7,7 @@ from PyQt6.QtWebEngineCore import QWebEngineSettings
 import folium
 from folium.plugins import MarkerCluster
 import database
+from i18n import tr
 from login import User
 
 class MapDisplay(QWidget):
@@ -34,11 +35,11 @@ class MapDisplay(QWidget):
 
         # Header with title and refresh button (consistent with Notifications UI)
         header_layout = QHBoxLayout()
-        title_lbl = QLabel("Map")
+        title_lbl = QLabel(tr("Map"))
         title_lbl.setStyleSheet("font-weight:600; font-size:16px; color:#cfd8ff;")
         header_layout.addWidget(title_lbl)
         header_layout.addStretch()
-        self.refresh_btn = QPushButton("Refresh")
+        self.refresh_btn = QPushButton(tr("Refresh"))
         # style refresh button to match notifications page controls
         self.refresh_btn.setStyleSheet("QPushButton { padding:6px 10px; border:1px solid #2b3a4a; border-radius:6px; background:transparent; color:#cfd8ff; }"
                                        "QPushButton:hover { background-color: #162040; }"
@@ -169,7 +170,7 @@ class MapDisplay(QWidget):
                         ).add_to(self.m)
                 folium.Marker(
                     location=cur_gps,
-                    popup=f"Node {node}: {cur_gps}",
+                    popup=tr("Node {n}: {gps}", n=node, gps=cur_gps),
                     icon=folium.CustomIcon(icon_img,icon_size=(50,50)),
                     title = cluster_type
                 ).add_to(marker_cluster)

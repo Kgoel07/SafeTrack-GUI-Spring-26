@@ -4,6 +4,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 import database
+from i18n import tr, notif_text
 from login import User
 
 
@@ -21,19 +22,19 @@ class HistoryLogPage(QWidget):
 
         # Header / controls
         header_layout = QHBoxLayout()
-        self.refresh_btn = QPushButton("Refresh")
+        self.refresh_btn = QPushButton(tr("Refresh"))
         self.refresh_btn.setStyleSheet("QPushButton { padding:6px 10px; border:1px solid #2b3a4a; border-radius:6px; }"
                                        "QPushButton:hover {background-color: #162040;}"
         )
         # NOTE: filter UI is provided by the outer wrapper (tab buttons).
         # Keep internal filter state but do not expose a dropdown here.
         # shorter label and styling to match the app theme
-        self.my_nodes_checkbox = QCheckBox("My Nodes")
+        self.my_nodes_checkbox = QCheckBox(tr("My Nodes"))
         self.my_nodes_checkbox.setStyleSheet(
             "QCheckBox { color: #cfd8ff; spacing:6px; font-weight:600; }"
             "QCheckBox::indicator { width:18px; height:18px; }"
         )
-        title_lbl = QLabel("History & Log")
+        title_lbl = QLabel(tr("History & Log"))
         title_lbl.setStyleSheet("font-size:16px; font-weight:700; color: #cfd8ff;")
         header_layout.addWidget(title_lbl)
         header_layout.addStretch()
@@ -127,16 +128,16 @@ class HistoryLogPage(QWidget):
 
             # Left: title and message (vertical)
             left = QVBoxLayout()
-            title_lbl = QLabel(title)
+            title_lbl = QLabel(notif_text(title))
             title_lbl.setStyleSheet("font-weight: 600; font-size: 14px;")
-            msg_lbl = QLabel(message)
+            msg_lbl = QLabel(notif_text(message))
             msg_lbl.setWordWrap(True)
             left.addWidget(title_lbl)
             left.addWidget(msg_lbl)
 
             # Right: status and time
             right = QVBoxLayout()
-            status_lbl = QLabel(status)
+            status_lbl = QLabel(tr(status))
             status_lbl.setAlignment(Qt.AlignmentFlag.AlignRight)
             status_lbl.setStyleSheet("font-weight: 700; color: #c0392b;")
             time_lbl = QLabel(time)

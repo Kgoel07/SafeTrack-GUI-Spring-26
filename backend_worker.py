@@ -11,6 +11,7 @@ class BackendWorker(QThread):
 
     def run(self):
         import database, notification, system_notif
+        from i18n import notif_text
 
         old_data = database.get_db()
         
@@ -25,12 +26,12 @@ class BackendWorker(QThread):
                         # redact location only for nodes the user is NOT authorized to view
                         print("User viewable nodes:", self.user.viewable_nodes)
                         if n[1] in self.user.viewable_nodes:
-                            system_notif.new_notif(n[3], n[4], n[2])
+                            system_notif.new_notif(notif_text(n[3]), notif_text(n[4]), n[2])
                             print("Backend notif:", n)
 
                         elif n[2] == "SOS":
                             n = self.redacted_notif(n)
-                            system_notif.new_notif(n[3], n[4], n[2])
+                            system_notif.new_notif(notif_text(n[3]), notif_text(n[4]), n[2])
                             print("Backend notif (redacted):", n)
                         self.notification_signal.emit(n)
             old_data = data

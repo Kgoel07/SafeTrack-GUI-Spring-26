@@ -23,8 +23,10 @@ from simulating_nodes import Simulate  # for debugging only
 from settings import SettingsPage
 from history_log import HistoryLogPage
 from nodes import NodesPage
+import i18n
 import preferences
 import theme
+from i18n import tr
 
 
 # ═══════════════════════════════════════════════════════
@@ -223,7 +225,7 @@ class FilteredPage(QWidget):
 
         self._tab_btns: dict[str, QPushButton] = {}
         for t in self.TABS:
-            btn = QPushButton(t)
+            btn = QPushButton(tr(t))
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.setFixedHeight(28)
             self._tab_btns[t] = btn
@@ -294,6 +296,7 @@ class FilteredPage(QWidget):
 
 class MainWindow(QMainWindow):
     logout_requested = pyqtSignal()
+    language_changed = pyqtSignal()   # the window must be rebuilt in the new language
 
     def __init__(self, user: User):
         super().__init__()
@@ -301,11 +304,14 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(1200, 700)
         self.user = user
         self.prefs = preferences.load(user.username)
+        # Set the language before any widget is created so every tr() call uses it
+        i18n.set_language(self.prefs["language"])
+        preferences.save_last_language(self.prefs["language"])
 
         self.port = "COM7"
         self.hrs = self.prefs["retention_hours"]
-        monitor = Simulate(self.port, self.hrs)
-        monitor.start()
+        self.monitor = Simulate(self.port, self.hrs)
+        self.monitor.start()
 
         self.setStyleSheet("QMainWindow { background-color: #060a13; }")
 
@@ -348,7 +354,7 @@ class MainWindow(QMainWindow):
         sidebar_layout.addWidget(logo_frame)
 
         # ── Section label ──
-        nav_label = QLabel("NAVIGATION")
+        nav_label = QLabel(tr("NAVIGATION"))
         nav_label.setStyleSheet("""
             color: #3d4f68; font-size: 10px; font-weight: 700;
             letter-spacing: 1.5px; padding: 18px 20px 8px 20px; border: none;
@@ -370,7 +376,7 @@ class MainWindow(QMainWindow):
 
         self.sidebar_buttons = {}
         for obj_name, label, icon_path in self.sidebar_buttons_info:
-            btn = SidebarButton(f"  {label}", icon_path)
+            btn = SidebarButton(f"  {tr(label)}", icon_path)
             sidebar_layout.addWidget(btn)
             self.sidebar_buttons[obj_name] = btn
             btn.clicked.connect(lambda checked, n=obj_name: self.on_sidebar_button(n))
@@ -387,7 +393,7 @@ class MainWindow(QMainWindow):
         sidebar_layout.addWidget(div)
 
         # ── Logout (separate, bottom) ──
-        logout_btn = SidebarButton(f"  Logout", img("logout_icon.png"))
+        logout_btn = SidebarButton(f"  {tr('Logout')}", img("logout_icon.png"))
         logout_btn.setStyleSheet("""
             QPushButton {
                 background: transparent; border: none;
@@ -433,7 +439,7 @@ class MainWindow(QMainWindow):
 
         self.name_lbl = QLabel(display_name)
         self.name_lbl.setStyleSheet("color: #cfd8e8; font-size: 13px; font-weight: 600; border: none;")
-        role_lbl = QLabel("Admin" if user.is_admin else "User")
+        role_lbl = QLabel(tr("Admin") if user.is_admin else tr("User"))
         role_lbl.setStyleSheet("color: #4a5a72; font-size: 11px; font-weight: 500; border: none;")
 
         user_text.addStretch()
@@ -515,6 +521,7 @@ class MainWindow(QMainWindow):
         self.settings_page.profile_changed.connect(self._refresh_profile)
         self.settings_page.account_deleted.connect(self._on_account_deleted)
         self.settings_page.light_mode_changed.connect(lambda on: theme.apply(self, on))
+        self.settings_page.language_changed.connect(lambda _: self.language_changed.emit())
         self.stacked_layout.addWidget(self.settings_page)       # index 3
         self.blank_pages["btnSettings"] = self.settings_page
 
@@ -541,12 +548,12 @@ class MainWindow(QMainWindow):
             icon_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             p_layout.addWidget(icon_lbl)
 
-            title_lbl = QLabel(label)
+            title_lbl = QLabel(tr(label))
             title_lbl.setStyleSheet("font-size: 22px; font-weight: 600; color: #2a3a52;")
             title_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             p_layout.addWidget(title_lbl)
 
-            sub_lbl = QLabel("Coming soon")
+            sub_lbl = QLabel(tr("Coming soon"))
             sub_lbl.setStyleSheet("font-size: 13px; color: #1e2d44;")
             sub_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             p_layout.addWidget(sub_lbl)
@@ -630,8 +637,7 @@ class MainWindow(QMainWindow):
                 self._generate_invite()
             case "btnLogout":
                 if self.prefs["confirm_logout"]:
-                    resp = QMessageBox.question(self, "Log out", "Are you sure you want to log out?")
-                    if resp != QMessageBox.StandardButton.Yes:
+                    if not i18n.confirm(self, tr("Log out"), tr("Are you sure you want to log out?")):
                         return
                 self.logout_requested.emit()
                 self.close()
@@ -645,15 +651,14 @@ class MainWindow(QMainWindow):
 
     def _generate_invite(self):
         if not self.user.is_admin:
-            QMessageBox.warning(self, "Permission Denied",
-                                "Only admins can create invite codes.")
+            i18n.warn(self, tr("Permission Denied"), tr("Only admins can create invite codes."))
             return
         code = adb.create_invite_code(self.user.username)
-        QMessageBox.information(
-            self, "Invite Code Generated",
-            f"Share this code with the person you want to invite:\n\n"
-            f"    {code}\n\n"
-            f"It expires in 48 hours and can only be used once."
+        i18n.info(
+            self, tr("Invite Code Generated"),
+            tr("Share this code with the person you want to invite:\n\n"
+               "    {code}\n\n"
+               "It expires in 48 hours and can only be used once.", code=code)
         )
 
     # ─────────────────────────────────────
@@ -675,7 +680,9 @@ class MainWindow(QMainWindow):
             pass
 
     def closeEvent(self, event):
-        theme.reset()
+        theme.reset(self)
+        if hasattr(self, "monitor"):
+            self.monitor.requestInterruption()
         if hasattr(self, "backend"):
             try:
                 self.backend.requestInterruption()
@@ -713,16 +720,26 @@ if __name__ == "__main__":
     adb.init_auth_db()
 
     app = QApplication(sys.argv)
+    # The login screen uses the last language picked in Settings on this computer
+    i18n.set_language(preferences.load_last_language())
     login_window = LoginWindow()
     main_window = None
+    _user_update_connected = False
 
-    def start_main(user):
-        global main_window
+    def start_main(user, geometry=None):
+        global main_window, _user_update_connected
         main_window = MainWindow(user)
         main_window.logout_requested.connect(show_login)
+        main_window.language_changed.connect(restart_main)
+        if geometry is not None:
+            main_window.setGeometry(geometry)
         login_window.hide()
         main_window.show()
         print(f"Logged in: {user.list_info()}")
+
+        if _user_update_connected:
+            return
+        _user_update_connected = True
 
         # Connect the global user_update signal so the running main window
         # refreshes the current user's viewable nodes when a new node is added.
@@ -750,6 +767,15 @@ if __name__ == "__main__":
             login_module.user_signals.user_update.connect(_on_user_update)
         except Exception:
             pass
+
+    def restart_main():
+        """Rebuild the main window after the language is changed in Settings."""
+        old = main_window
+        start_main(old.user, old.geometry())
+        old.close()
+        main_window.on_sidebar_button("btnSettings")
+        main_window.settings_page.show_section("App Preferences")
+        QTimer.singleShot(0, lambda: i18n.info(main_window, tr("Saved"), tr("Your settings have been saved.")))
 
     def show_login():
         login_window.show()

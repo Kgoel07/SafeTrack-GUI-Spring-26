@@ -6,7 +6,9 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 import database
+import i18n
 import preferences
+from i18n import tr
 from login import User
 
 
@@ -21,7 +23,9 @@ _TILE_MIN_WIDTH = 250
 
 
 def _status_style(status: str):
-    return _STATUS_STYLE.get(str(status).lower(), (str(status).capitalize() or "Unknown", "#60a5fa", "#172554"))
+    label, fg, bg = _STATUS_STYLE.get(str(status).lower(),
+                                      (str(status).capitalize() or "Unknown", "#60a5fa", "#172554"))
+    return tr(label), fg, bg
 
 
 def _time_ago(timestamp: str) -> str:
@@ -29,13 +33,7 @@ def _time_ago(timestamp: str) -> str:
         secs = int((datetime.now() - datetime.fromisoformat(str(timestamp))).total_seconds())
     except ValueError:
         return ""
-    if secs < 60:
-        return "just now"
-    if secs < 3600:
-        return f"{secs // 60} min ago"
-    if secs < 86400:
-        return f"{secs // 3600} hr ago"
-    return f"{secs // 86400} day{'s' if secs >= 172800 else ''} ago"
+    return i18n.time_ago(secs)
 
 
 class _StatFilter(QFrame):
@@ -52,7 +50,7 @@ class _StatFilter(QFrame):
         lay.setSpacing(0)
         self.count_lbl = QLabel("0")
         self.count_lbl.setStyleSheet(f"color: {color}; font-size: 22px; font-weight: 800;")
-        cap = QLabel(label.upper())
+        cap = QLabel(tr(label).upper())
         cap.setStyleSheet("color: #64748b; font-size: 10px; font-weight: 700; letter-spacing: 1.5px;")
         lay.addWidget(self.count_lbl)
         lay.addWidget(cap)
@@ -102,7 +100,7 @@ class _NodeTile(QFrame):
         top = QHBoxLayout()
         id_box = QVBoxLayout()
         id_box.setSpacing(0)
-        cap = QLabel("NODE")
+        cap = QLabel(tr("NODE"))
         cap.setStyleSheet("color: #64748b; font-size: 10px; font-weight: 700; letter-spacing: 1.5px;")
         num = QLabel(str(node_id))
         num.setStyleSheet("color: #f1f5f9; font-size: 26px; font-weight: 800;")
@@ -120,12 +118,12 @@ class _NodeTile(QFrame):
         # Details
         for caption, value, sub in (
             ("LAST SEEN", _time_ago(time), preferences.format_time(time, use_24h)),
-            ("LOCATION", f"{lat:.5f}, {lon:.5f}" if authorized else "Hidden",
-             "Latitude, longitude" if authorized else "You don't have access to this node"),
+            ("LOCATION", f"{lat:.5f}, {lon:.5f}" if authorized else tr("Hidden"),
+             tr("Latitude, longitude") if authorized else tr("You don't have access to this node")),
         ):
             box = QVBoxLayout()
             box.setSpacing(1)
-            c = QLabel(caption)
+            c = QLabel(tr(caption))
             c.setStyleSheet("color: #64748b; font-size: 10px; font-weight: 700; letter-spacing: 1.5px;")
             v = QLabel(value)
             v.setStyleSheet(f"color: {'#cbd5e1' if authorized or caption != 'LOCATION' else '#64748b'}; "
@@ -139,7 +137,7 @@ class _NodeTile(QFrame):
             lay.addLayout(box)
 
         lay.addSpacing(4)
-        btn = QPushButton("View on Map")
+        btn = QPushButton(tr("View on Map"))
         btn.setFixedHeight(32)
         btn.setEnabled(authorized)
         btn.setCursor(Qt.CursorShape.PointingHandCursor if authorized else Qt.CursorShape.ArrowCursor)
@@ -177,16 +175,16 @@ class NodesPage(QWidget):
 
         # Header / controls (same controls as the Notifications and History pages)
         header_layout = QHBoxLayout()
-        self.refresh_btn = QPushButton("Refresh")
+        self.refresh_btn = QPushButton(tr("Refresh"))
         self.refresh_btn.setStyleSheet("QPushButton { padding:6px 10px; border:1px solid #2b3a4a; border-radius:6px; }"
                                        "QPushButton:hover {background-color: #162040;}"
         )
-        self.my_nodes_checkbox = QCheckBox("My Nodes")
+        self.my_nodes_checkbox = QCheckBox(tr("My Nodes"))
         self.my_nodes_checkbox.setStyleSheet(
             "QCheckBox { color: #cfd8ff; spacing:6px; font-weight:600; }"
             "QCheckBox::indicator { width:18px; height:18px; }"
         )
-        title_lbl = QLabel("Nodes")
+        title_lbl = QLabel(tr("Nodes"))
         title_lbl.setStyleSheet("font-size:16px; font-weight:700; color: #cfd8ff;")
         self.updated_lbl = QLabel("")
         self.updated_lbl.setStyleSheet("font-size: 11px; color: gray;")
@@ -244,8 +242,8 @@ class NodesPage(QWidget):
         except Exception as e:
             print(f"load_nodes(): get_latest_node_rows failed: {e}")
             self.nodes = []
-        self.updated_lbl.setText("Updated " + datetime.now().strftime(
-            "%H:%M:%S" if self.use_24h else "%I:%M:%S %p"))
+        self.updated_lbl.setText(tr("Updated {time}", time=datetime.now().strftime(
+            "%H:%M:%S" if self.use_24h else "%I:%M:%S %p")))
         self._apply_filters()
 
     def _auto_refresh(self):
@@ -285,8 +283,8 @@ class NodesPage(QWidget):
             for r in rows
         ]
         if not rows:
-            self.empty_lbl.setText("No nodes in the database yet" if not self.nodes
-                                   else "No nodes match this filter")
+            self.empty_lbl.setText(tr("No nodes in the database yet") if not self.nodes
+                                   else tr("No nodes match this filter"))
         self._cols = 0
         self._layout_grid()
 

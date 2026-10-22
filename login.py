@@ -29,6 +29,8 @@ from PyQt6.QtGui import (
 )
 
 import auth_database as adb
+import i18n
+from i18n import tr
 from auth_utils import (
     validate_username, validate_password,
     validate_email, validate_fullname,
@@ -209,7 +211,7 @@ def _logo() -> QLabel:
 
 
 def _heading(text: str) -> QLabel:
-    lbl = QLabel(text)
+    lbl = QLabel(tr(text))
     lbl.setObjectName("heading")
     lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
     return lbl
@@ -246,7 +248,7 @@ def _set_hint(label: QLabel, text: str, ok: bool = False):
         label.setText("")
         label.setMaximumHeight(0)
     else:
-        label.setText(text)
+        label.setText(tr(text))
         label.setObjectName("hintOk" if ok else "hintLabel")
         # Force stylesheet re-evaluation after objectName change
         label.setStyleSheet(label.styleSheet())
@@ -265,7 +267,7 @@ def _set_field_state(field: QLineEdit, state: str):
 
 def _input(placeholder: str, password: bool = False) -> QLineEdit:
     le = QLineEdit()
-    le.setPlaceholderText(placeholder)
+    le.setPlaceholderText(tr(placeholder))
     le.setFixedHeight(48)
     if password:
         le.setEchoMode(QLineEdit.EchoMode.Password)
@@ -273,7 +275,7 @@ def _input(placeholder: str, password: bool = False) -> QLineEdit:
 
 
 def _primary_btn(text: str) -> QPushButton:
-    btn = QPushButton(text)
+    btn = QPushButton(tr(text))
     btn.setObjectName("primary")
     btn.setFixedHeight(50)
     btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -281,7 +283,7 @@ def _primary_btn(text: str) -> QPushButton:
 
 
 def _link_btn(text: str, bold: bool = False) -> QPushButton:
-    btn = QPushButton(text)
+    btn = QPushButton(tr(text))
     btn.setObjectName("linkBold" if bold else "link")
     btn.setCursor(Qt.CursorShape.PointingHandCursor)
     return btn
@@ -382,7 +384,7 @@ class _LoginPage(QWidget):
         # signup row
         row_su = QHBoxLayout()
         row_su.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lbl = QLabel("Don't have an account?")
+        lbl = QLabel(tr("Don't have an account?"))
         lbl.setObjectName("dimLabel")
         su_btn = _link_btn("Sign up!", bold=True)
         su_btn.clicked.connect(self.go_signup.emit)
@@ -503,7 +505,7 @@ class _SignUpPage(QWidget):
         lay.addSpacing(6)
         row = QHBoxLayout()
         row.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lbl = QLabel("Already have an account?")
+        lbl = QLabel(tr("Already have an account?"))
         lbl.setObjectName("dimLabel")
         back = _link_btn("Log in!", bold=True)
         back.clicked.connect(self.go_login.emit)
@@ -629,10 +631,10 @@ class _SignUpPage(QWidget):
 
         success = adb.create_user(username, "", fullname, pw, is_admin=0)
         if not success:
-            self.err.setText("Could not create account. Try again.")
+            self.err.setText(tr("Could not create account. Try again."))
             return
 
-        self.ok.setText("Account created! You can now log in.")
+        self.ok.setText(tr("Account created! You can now log in."))
         for w in (self.f_name, self.f_user, self.f_pass, self.f_pass2):
             w.clear()
         for h in (self.h_name, self.h_user, self.h_pass, self.h_pass2):
@@ -659,7 +661,7 @@ class _ForgotPage(QWidget):
         lay.addWidget(_heading("FORGOT PASSWORD"))
         lay.addSpacing(8)
 
-        info = QLabel("Enter the email linked to your account.\nWe'll send a reset code.")
+        info = QLabel(tr("Enter the email linked to your account.\nWe'll send a reset code."))
         info.setObjectName("dimLabel")
         info.setAlignment(Qt.AlignmentFlag.AlignCenter)
         info.setWordWrap(True)
@@ -683,7 +685,7 @@ class _ForgotPage(QWidget):
 
         row = QHBoxLayout()
         row.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lbl = QLabel("Already have a code?")
+        lbl = QLabel(tr("Already have a code?"))
         lbl.setObjectName("dimLabel")
         rlink = _link_btn("Enter code", bold=True)
         rlink.clicked.connect(self.go_reset.emit)
@@ -704,24 +706,24 @@ class _ForgotPage(QWidget):
 
         ok, msg = validate_email(email)
         if not ok:
-            self.err.setText(msg)
+            self.err.setText(tr(msg))
             return
 
         username = adb.find_username_by_email(email)
         if username is None:
-            self.ok.setText("If that email is registered, a reset code has been sent.")
+            self.ok.setText(tr("If that email is registered, a reset code has been sent."))
             return
 
         token = adb.create_reset_token(username)
         sent = _send_reset_email(email, token)
 
         if sent:
-            self.ok.setText("Reset code sent! Check your inbox.")
+            self.ok.setText(tr("Reset code sent! Check your inbox."))
         else:
-            self.ok.setText(
-                f"Reset code (SMTP not configured):\n{token}\n\n"
-                "Copy this code and click 'Enter code' below."
-            )
+            self.ok.setText(tr(
+                "Reset code (SMTP not configured):\n{token}\n\n"
+                "Copy this code and click 'Enter code' below.", token=token
+            ))
 
 
 # ════════════════════════════════════════════════════════════════
@@ -813,12 +815,12 @@ class _ResetPage(QWidget):
         pw2 = self.f_pass2.text()
 
         if not token:
-            self.err.setText("Paste the reset code you received.")
+            self.err.setText(tr("Paste the reset code you received."))
             return
 
         username = adb.validate_reset_token(token)
         if username is None:
-            self.err.setText("Invalid or expired reset code.")
+            self.err.setText(tr("Invalid or expired reset code."))
             return
 
         ok, msg = validate_password(pw, username)
@@ -834,7 +836,7 @@ class _ResetPage(QWidget):
         adb.update_password(username, pw)
         adb.consume_reset_token(token)
 
-        self.ok.setText("Password updated! You can now log in.")
+        self.ok.setText(tr("Password updated! You can now log in."))
         for w in (self.f_token, self.f_pass, self.f_pass2):
             w.clear()
         _set_hint(self.h_pass, "")
@@ -861,10 +863,10 @@ class _InvitePage(QWidget):
         lay.addWidget(_heading("ADMIN INVITE"))
         lay.addSpacing(8)
 
-        info = QLabel(
+        info = QLabel(tr(
             "An existing admin has sent you an invite code.\n"
             "Enter it below along with your account credentials."
-        )
+        ))
         info.setObjectName("dimLabel")
         info.setAlignment(Qt.AlignmentFlag.AlignCenter)
         info.setWordWrap(True)
@@ -893,7 +895,7 @@ class _InvitePage(QWidget):
 
         row = QHBoxLayout()
         row.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lbl = QLabel("No account yet?")
+        lbl = QLabel(tr("No account yet?"))
         lbl.setObjectName("dimLabel")
         su = _link_btn("Sign up first", bold=True)
         su.clicked.connect(self.go_signup.emit)
@@ -916,25 +918,25 @@ class _InvitePage(QWidget):
         password = self.f_pass.text()
 
         if not code or not username or not password:
-            self.err.setText("All fields are required.")
+            self.err.setText(tr("All fields are required."))
             return
 
         if not adb.validate_invite_code(code):
-            self.err.setText("Invalid or expired invite code.")
+            self.err.setText(tr("Invalid or expired invite code."))
             return
 
         result = adb.authenticate_user(username, password)
         if result is None:
-            self.err.setText("Invalid username or password.")
+            self.err.setText(tr("Invalid username or password."))
             return
 
         adb.promote_to_admin(username)
         adb.consume_invite_code(code, username)
 
-        self.ok.setText(
-            f"Success! '{username}' now has admin access.\n"
-            "Go back to login to continue."
-        )
+        self.ok.setText(tr(
+            "Success! '{username}' now has admin access.\n"
+            "Go back to login to continue.", username=username
+        ))
         for w in (self.f_code, self.f_user, self.f_pass):
             w.clear()
 
@@ -952,7 +954,6 @@ class LoginWindow(_GradientBG):
         # Ensure auth tables exist before any page tries to query them
         adb.init_auth_db()
 
-        self.setWindowTitle("SafeTrack – Login")
         self.setMinimumSize(900, 650)
         self.setStyleSheet(_STYLES)
 
@@ -961,6 +962,16 @@ class LoginWindow(_GradientBG):
 
         self.stack = QStackedWidget()
         layout.addWidget(self.stack)
+        self._build_pages()
+
+    def _build_pages(self):
+        """Create (or re-create) every page in the current language."""
+        self._lang = i18n.get_language()
+        self.setWindowTitle(tr("SafeTrack – Login"))
+        while self.stack.count():
+            old = self.stack.widget(0)
+            self.stack.removeWidget(old)
+            old.deleteLater()
 
         self.pg_login = _LoginPage()
         self.pg_signup = _SignUpPage()
@@ -994,5 +1005,7 @@ class LoginWindow(_GradientBG):
         self.close()
 
     def show(self):
+        if self._lang != i18n.get_language():
+            self._build_pages()   # language was changed in Settings
         self.stack.setCurrentIndex(0)
         super().show()

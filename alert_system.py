@@ -1,6 +1,7 @@
 # alert_system.py
 from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtWidgets import QMessageBox
+from i18n import tr, notif_text
 from login import User
 
 class AlertSystem(QObject):
@@ -13,20 +14,20 @@ class AlertSystem(QObject):
 
     def show_alert_node(self, notification):
         msg = QMessageBox(self.parent)
-        msg.setWindowTitle("Node Alert")
+        msg.setWindowTitle(tr("Node Alert"))
         msg.setIcon(QMessageBox.Icon.Warning)
-        msg.setText(f"Node {notification[1]} ALERT")
-        msg.setInformativeText(notification[4])
+        msg.setText(notif_text(f"Node {notification[1]} ALERT"))
+        msg.setInformativeText(notif_text(notification[4]))
 
         view_btn = None
 
         if notification[1] in self.user.viewable_nodes:
             view_btn = msg.addButton(
-                "View on Map",
+                tr("View on Map"),
                 QMessageBox.ButtonRole.AcceptRole
             )
         dismiss_btn = msg.addButton(
-            "Dismiss",
+            tr("Dismiss"),
             QMessageBox.ButtonRole.RejectRole
         )
 
@@ -42,8 +43,8 @@ class AlertSystem(QObject):
         msg.setIcon(QMessageBox.Icon.Warning)
         msg.setText(notification[1])
         msg.setInformativeText(notification[2])
-        login_btn = msg.addButton("Login", QMessageBox.ButtonRole.AcceptRole)
-        dismiss_btn = msg.addButton("Dismiss", QMessageBox.ButtonRole.RejectRole)
+        login_btn = msg.addButton(tr("Login"), QMessageBox.ButtonRole.AcceptRole)
+        dismiss_btn = msg.addButton(tr("Dismiss"), QMessageBox.ButtonRole.RejectRole)
         msg.exec()
 
         if msg.clickedButton() == login_btn:

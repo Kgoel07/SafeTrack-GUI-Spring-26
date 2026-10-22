@@ -17,8 +17,10 @@ from PyQt6.QtGui import QPainter, QColor
 import auth_database as adb
 import auth_utils
 import database
+import i18n
 import preferences as prefs
 import theme
+from i18n import tr
 from login import User
 
 
@@ -65,7 +67,7 @@ class _SectionBtn(QPushButton):
                 }
             """)
         # "&&" so Qt shows a literal "&" instead of a mnemonic underline
-        self.setText(f"  {self._icon}  {self._label.replace('&', '&&')}")
+        self.setText(f"  {self._icon}  {tr(self._label).replace('&', '&&')}")
 
 
 # ───────────────────────────────────────────────────────
@@ -73,7 +75,7 @@ class _SectionBtn(QPushButton):
 # ───────────────────────────────────────────────────────
 def _make_input(placeholder: str = "", password: bool = False) -> QLineEdit:
     w = QLineEdit()
-    w.setPlaceholderText(placeholder)
+    w.setPlaceholderText(tr(placeholder) if placeholder else "")
     if password:
         w.setEchoMode(QLineEdit.EchoMode.Password)
     w.setFixedHeight(44)
@@ -102,13 +104,13 @@ def _make_input(placeholder: str = "", password: bool = False) -> QLineEdit:
 
 
 def _field_label(text: str) -> QLabel:
-    lbl = QLabel(text)
+    lbl = QLabel(tr(text))
     lbl.setStyleSheet("color: #94a3b8; font-size: 13px; font-weight: 600;")
     return lbl
 
 
 def _hint(text: str) -> QLabel:
-    lbl = QLabel(text)
+    lbl = QLabel(tr(text))
     lbl.setWordWrap(True)
     lbl.setStyleSheet("color: #64748b; font-size: 12px;")
     return lbl
@@ -116,7 +118,7 @@ def _hint(text: str) -> QLabel:
 
 def _button(text: str, kind: str = "primary") -> QPushButton:
     """kind: primary (blue), secondary (outline), danger (red)."""
-    btn = QPushButton(text)
+    btn = QPushButton(tr(text))
     btn.setCursor(Qt.CursorShape.PointingHandCursor)
     btn.setFixedHeight(38)
     styles = {
@@ -149,11 +151,11 @@ def _button(text: str, kind: str = "primary") -> QPushButton:
     return btn
 
 
-def _make_combo(options: list[tuple[str, object]], width: int = 170) -> QComboBox:
+def _make_combo(options: list[tuple[str, object]], width: int = 210) -> QComboBox:
     """options = [(display text, stored value), ...]"""
     w = QComboBox()
     for text, value in options:
-        w.addItem(text, value)
+        w.addItem(tr(text), value)
     w.setFixedSize(width, 36)
     w.setCursor(Qt.CursorShape.PointingHandCursor)
     w.setStyleSheet("""
@@ -230,7 +232,7 @@ def _setting_row(name: str, desc: str, control: QWidget | None = None) -> QHBoxL
     row.setContentsMargins(0, 12, 0, 12)
     text = QVBoxLayout()
     text.setSpacing(2)
-    n = QLabel(name)
+    n = QLabel(tr(name))
     n.setStyleSheet("color: #e2e8f0; font-size: 13px; font-weight: 600;")
     text.addWidget(n)
     if desc:
@@ -279,7 +281,7 @@ class _Panel(QWidget):
         self.form.setContentsMargins(0, 0, 16, 16)
         self.form.setSpacing(10)
 
-        t = QLabel(title)
+        t = QLabel(tr(title))
         t.setStyleSheet("color: #f1f5f9; font-size: 17px; font-weight: 700;")
         self.form.addWidget(t)
         if subtitle:
@@ -290,7 +292,7 @@ class _Panel(QWidget):
         layout.addWidget(scroll)
 
     def add_heading(self, text: str):
-        lbl = QLabel(text)
+        lbl = QLabel(tr(text))
         lbl.setStyleSheet("color: #3d4f68; font-size: 10px; font-weight: 700; "
                           "letter-spacing: 1.5px; padding-top: 8px;")
         self.form.addWidget(lbl)
@@ -379,7 +381,7 @@ class _PrivacyPanel(_Panel):
         self.user = user
 
         # ── Access level ──
-        self.role_lbl = _value_label("Admin" if user.is_admin else "User",
+        self.role_lbl = _value_label(tr("Admin") if user.is_admin else tr("User"),
                                      "#60a5fa" if user.is_admin else "#cbd5e1")
         self.nodes_lbl = _value_label("")
         self.add_group("YOUR ACCESS", [
@@ -439,10 +441,10 @@ class _PrivacyPanel(_Panel):
 
     def refresh_access(self):
         if self.user.is_admin:
-            self.nodes_lbl.setText("All nodes")
+            self.nodes_lbl.setText(tr("All nodes"))
         else:
             n = len(self.user.viewable_nodes)
-            self.nodes_lbl.setText(f"{n} node{'s' if n != 1 else ''}")
+            self.nodes_lbl.setText(tr("{n} node", n=n) if n == 1 else tr("{n} nodes", n=n))
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -451,7 +453,7 @@ class _PrivacyPanel(_Panel):
             self._load_invites()   # codes may also be created from the sidebar
 
     def _show_pw_status(self, ok: bool, text: str):
-        self.pw_status.setText(text)
+        self.pw_status.setText(tr(text))
         self.pw_status.setStyleSheet(f"color: {'#22c55e' if ok else '#ef4444'}; font-size: 12px;")
         self.pw_status.show()
 
@@ -484,8 +486,8 @@ class _PrivacyPanel(_Panel):
         code = adb.create_invite_code(self.user.username)
         QApplication.clipboard().setText(code)
         self._load_invites()
-        QMessageBox.information(self, "Invite Code Generated",
-                                f"Invite code: {code}\n\nIt has been copied to your clipboard.")
+        i18n.info(self, tr("Invite Code Generated"),
+                  tr("Invite code: {code}\n\nIt has been copied to your clipboard.", code=code))
 
     def _load_invites(self):
         while self.invite_list.count():
@@ -496,12 +498,12 @@ class _PrivacyPanel(_Panel):
         now = datetime.now(timezone.utc)
         for inv in adb.list_invite_codes(self.user.username)[:8]:
             if inv["used"]:
-                status, color = f"Used by {inv['used_by']}", "#64748b"
+                status, color = tr("Used by {user}", user=inv["used_by"]), "#64748b"
             elif datetime.fromisoformat(inv["expires_at"]) < now:
-                status, color = "Expired", "#64748b"
+                status, color = tr("Expired"), "#64748b"
             else:
                 expires = datetime.fromisoformat(inv["expires_at"]).astimezone()
-                status, color = f"Active · expires {expires:%b %d, %H:%M}", "#22c55e"
+                status, color = tr("Active · expires {when}", when=i18n.short_datetime(expires)), "#22c55e"
             row = QWidget()
             row.setStyleSheet("background: transparent;")
             rl = QHBoxLayout(row)
@@ -518,27 +520,28 @@ class _PrivacyPanel(_Panel):
             self.invite_list.addWidget(row)
 
     def _delete_account(self):
-        resp = QMessageBox.warning(
-            self, "Delete Account",
-            "Are you sure you want to delete your account?\nThis action cannot be undone.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
-        )
-        if resp != QMessageBox.StandardButton.Yes:
+        if not i18n.confirm(self, tr("Delete Account"),
+                            tr("Are you sure you want to delete your account?\nThis action cannot be undone."),
+                            yes="Delete Account", no="Cancel", warning=True):
             return
-        pw, ok = QInputDialog.getText(self, "Confirm Password",
-                                      "Enter your password to delete your account:",
-                                      QLineEdit.EchoMode.Password)
-        if not ok:
+        dlg = QInputDialog(self)
+        dlg.setWindowTitle(tr("Confirm Password"))
+        dlg.setLabelText(tr("Enter your password to delete your account:"))
+        dlg.setTextEchoMode(QLineEdit.EchoMode.Password)
+        dlg.setOkButtonText(tr("OK"))
+        dlg.setCancelButtonText(tr("Cancel"))
+        if not dlg.exec():
             return
+        pw = dlg.textValue()
         if adb.authenticate_user(self.user.username, pw) is None:
-            QMessageBox.warning(self, "Incorrect Password", "That password is incorrect.")
+            i18n.warn(self, tr("Incorrect Password"), tr("That password is incorrect."))
             return
         if adb.remove_user(self.user.username):
             prefs.clear(self.user.username)
-            QMessageBox.information(self, "Account Deleted", "Your account has been deleted.")
+            i18n.info(self, tr("Account Deleted"), tr("Your account has been deleted."))
             self.account_deleted.emit()
         else:
-            QMessageBox.warning(self, "Error", "Could not delete your account.")
+            i18n.warn(self, tr("Error"), tr("Could not delete your account."))
 
 
 # ───────────────────────────────────────────────────────
@@ -554,8 +557,11 @@ class _PreferencesPanel(_Panel):
         self.user = user
 
         self.light_mode = _Toggle()
+        # Language names are shown in their own language, so they are not translated
+        self.language = _make_combo(list((name, code) for code, name in i18n.LANGUAGES.items()))
         self.add_group("APPEARANCE", [
             ("Light mode", "Use a light colour scheme. Applies instantly.", self.light_mode),
+            ("Language", "Language used throughout the app.", self.language),
         ])
 
         self.startup_page = _make_combo([("Map", "Map"), ("Nodes", "Nodes"),
@@ -604,6 +610,7 @@ class _PreferencesPanel(_Panel):
 
     def set_values(self, p: dict):
         self.light_mode.setChecked(p["light_mode"])
+        _set_combo_value(self.language, p["language"])
         _set_combo_value(self.startup_page, p["startup_page"])
         _set_combo_value(self.time_format, p["time_format_24h"])
         self.confirm_logout.setChecked(p["confirm_logout"])
@@ -614,6 +621,7 @@ class _PreferencesPanel(_Panel):
     def values(self) -> dict:
         return {
             "light_mode":      self.light_mode.isChecked(),
+            "language":        self.language.currentData(),
             "startup_page":    self.startup_page.currentData(),
             "time_format_24h": self.time_format.currentData(),
             "confirm_logout":  self.confirm_logout.isChecked(),
@@ -683,7 +691,7 @@ class _ContactsPanel(_Panel):
 
         contacts = adb.list_emergency_contacts(self.user.username)
         if not contacts:
-            empty = QLabel("No emergency contacts yet.")
+            empty = QLabel(tr("No emergency contacts yet."))
             empty.setStyleSheet("color: #64748b; font-size: 13px; padding: 14px 0;")
             self.list_lay.addWidget(empty)
         for i, c in enumerate(contacts):
@@ -692,12 +700,12 @@ class _ContactsPanel(_Panel):
             remove_btn = _button("Remove", "secondary")
             remove_btn.setFixedHeight(32)
             remove_btn.clicked.connect(lambda _, cid=c["id"], n=c["name"]: self._remove(cid, n))
-            detail = " · ".join(x for x in (c["relationship"], c["phone"]) if x)
+            detail = " · ".join(x for x in (tr(c["relationship"]), c["phone"]) if x)
             self.list_lay.addLayout(_setting_row(c["name"], detail, remove_btn))
 
         full = len(contacts) >= self.MAX_CONTACTS
         self.add_btn.setEnabled(not full)
-        self.add_btn.setText(f"Limit of {self.MAX_CONTACTS} reached" if full else "Add Contact")
+        self.add_btn.setText(tr("Limit of {n} reached", n=self.MAX_CONTACTS) if full else tr("Add Contact"))
 
     @staticmethod
     def _clear_layout(layout):
@@ -718,7 +726,7 @@ class _ContactsPanel(_Panel):
         elif not _PHONE_RE.match(phone):
             ok, msg = False, "Enter a valid phone number."
         if not ok:
-            self.add_status.setText(msg)
+            self.add_status.setText(tr(msg))
             self.add_status.show()
             return
         self.add_status.hide()
@@ -729,8 +737,8 @@ class _ContactsPanel(_Panel):
             self._load()
 
     def _remove(self, contact_id: int, name: str):
-        resp = QMessageBox.question(self, "Remove Contact", f"Remove {name} from your emergency contacts?")
-        if resp == QMessageBox.StandardButton.Yes:
+        if i18n.confirm(self, tr("Remove Contact"),
+                        tr("Remove {name} from your emergency contacts?", name=name), yes="Remove", no="Cancel"):
             adb.remove_emergency_contact(self.user.username, contact_id)
             self._load()
 
@@ -747,9 +755,9 @@ class _AboutPanel(_Panel):
 
         self.add_group("ABOUT", [
             ("SafeTrack", "Tracks the location and status of SafeTrack nodes and alerts you "
-                          "the moment a node sends an SOS.", _value_label(self.VERSION, "#64748b")),
+                          "the moment a node sends an SOS.", _value_label(tr(self.VERSION), "#64748b")),
             ("Signed in as", "", _value_label(
-                f"{user.username} ({'Admin' if user.is_admin else 'User'})")),
+                f"{user.username} ({tr('Admin') if user.is_admin else tr('User')})")),
         ])
 
         # ── Status legend ──
@@ -821,6 +829,7 @@ class SettingsPage(QWidget):
     profile_changed = pyqtSignal()           # emitted after the account profile is saved
     account_deleted = pyqtSignal()           # emitted after the user deletes their account
     light_mode_changed = pyqtSignal(bool)    # emitted when the Light mode switch is flipped
+    language_changed = pyqtSignal(str)       # emitted when a different language is saved
 
     _SECTIONS = [
         ("👤", "Account"),
@@ -843,7 +852,7 @@ class SettingsPage(QWidget):
         top = QHBoxLayout()
         top.setSpacing(16)
 
-        back_btn = QPushButton("← Back")
+        back_btn = QPushButton("← " + tr("Back"))
         back_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         back_btn.setFixedHeight(34)
         back_btn.setStyleSheet("""
@@ -862,12 +871,12 @@ class SettingsPage(QWidget):
         """)
         back_btn.clicked.connect(self.back_requested.emit)
 
-        page_title = QLabel("Settings")
+        page_title = QLabel(tr("Settings"))
         page_title.setStyleSheet(
             "color: #f1f5f9; font-size: 24px; font-weight: 800; letter-spacing: -0.5px;"
         )
 
-        self.save_btn = QPushButton("💾  Save Changes")
+        self.save_btn = QPushButton("💾  " + tr("Save Changes"))
         self.save_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.save_btn.setFixedHeight(36)
         self.save_btn.setStyleSheet("""
@@ -969,11 +978,15 @@ class SettingsPage(QWidget):
         ok, msg = self._panels["Account"].save()
         if not ok:
             self.show_section("Account")
-            QMessageBox.warning(self, "Couldn't Save", msg)
+            i18n.warn(self, tr("Couldn't Save"), tr(msg))
             return
         self.profile_changed.emit()
 
         values = self._panels["App Preferences"].values()
         prefs.save(self.user.username, values)
         self.preferences_changed.emit(values)
-        QMessageBox.information(self, "Saved", "Your settings have been saved.")
+        if values["language"] != i18n.get_language():
+            # The main window rebuilds itself in the new language
+            self.language_changed.emit(values["language"])
+            return
+        i18n.info(self, tr("Saved"), tr("Your settings have been saved."))

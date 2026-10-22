@@ -7,6 +7,7 @@ from PyQt6.QtCore import QSettings
 # key: (default, type)
 DEFAULTS = {
     "light_mode":        (False, bool),  # light colour scheme for the main window
+    "language":          ("en", str),    # "en" | "sw" – saved only; translations not implemented yet
     "startup_page":      ("Map", str),   # "Map" | "Nodes" | "History"
     "map_zoom":          (14, int),      # folium zoom level for the map page
     "show_sos_radius":   (True, bool),   # red circle around SOS nodes on the map
@@ -55,4 +56,15 @@ def clear(username: str):
     """Remove a user's saved preferences (e.g. after deleting their account)."""
     s = _store()
     s.remove(f"prefs/{username}")
+    s.sync()
+
+
+def load_last_language() -> str:
+    """Language last chosen on this computer (used by the login screen)."""
+    return _store().value("last_language", "en", type=str)
+
+
+def save_last_language(code: str):
+    s = _store()
+    s.setValue("last_language", code)
     s.sync()

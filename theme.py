@@ -158,11 +158,12 @@ class _ThemeFilter(QObject):
 def apply(root: QWidget, light: bool):
     """Switch `root` (the main window) and everything inside it to light or dark."""
     global _light, _root, _filter
+    new_root = root is not _root
     _root = root
     if _filter is None:
         _filter = _ThemeFilter()
         QApplication.instance().installEventFilter(_filter)
-    if light == _light:
+    if light == _light and not new_root:
         return
     _light = light
     widgets = [root] + root.findChildren(QWidget)
@@ -176,8 +177,11 @@ def apply(root: QWidget, light: bool):
         w.update()
 
 
-def reset():
-    """Turn light mode off (e.g. when the main window closes / on logout)."""
+def reset(root: QWidget | None = None):
+    """Turn light mode off when the main window closes (e.g. on logout).
+    Does nothing if another main window has already taken over."""
     global _light, _root
+    if root is not None and root is not _root:
+        return
     _light = False
     _root = None
