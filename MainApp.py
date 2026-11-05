@@ -311,7 +311,7 @@ class MainWindow(QMainWindow):
         self.port = "COM7"
         self.hrs = self.prefs["retention_hours"]
         self.monitor = Simulate(self.port, self.hrs)
-        self.monitor.start()
+        # self.monitor.start()
 
         self.setStyleSheet("QMainWindow { background-color: #060a13; }")
 

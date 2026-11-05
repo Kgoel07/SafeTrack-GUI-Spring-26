@@ -1,8 +1,0 @@
-On new node added, user tuple not updated to add new viewable node for admin [FIXED]
-notification page there are two filter options and both are out of sync [FIXED]
-invite icon is same as settings, better move to settings page [FIXED]
-gitignore didnt have .key file exception. [FIXED]
-old user database functions and ititialization still in database.py [FIXED]
-
-
-Some design inconsistencies

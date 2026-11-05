@@ -9,9 +9,11 @@ from datetime import datetime, timezone
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QFrame, QLineEdit, QScrollArea, QStackedWidget,
-    QMessageBox, QComboBox, QCheckBox, QInputDialog, QApplication
+    QMessageBox, QComboBox, QCheckBox, QInputDialog, QApplication,
+    QSizePolicy
 )
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import (Qt, pyqtSignal, QSignalBlocker, pyqtProperty,
+                          QPropertyAnimation, QEasingCurve, QRectF)
 from PyQt6.QtGui import QPainter, QColor
 
 import auth_database as adb
@@ -95,6 +97,10 @@ def _make_input(placeholder: str = "", password: bool = False) -> QLineEdit:
         QLineEdit:hover {
             border-color: #2a3a52;
         }
+        QLineEdit[unsaved="true"] {
+            border-color: #f59e0b;
+            background-color: rgba(245, 158, 11, 0.10);
+        }
         QLineEdit:read-only {
             color: #64748b;
             background-color: #0b1220;
@@ -165,6 +171,10 @@ def _make_combo(options: list[tuple[str, object]], width: int = 210) -> QComboBo
         }
         QComboBox:hover { border-color: #2a3a52; }
         QComboBox:focus { border-color: #2563eb; }
+        QComboBox[unsaved="true"] {
+            border-color: #f59e0b;
+            background-color: rgba(245, 158, 11, 0.10);
+        }
         QComboBox::drop-down { border: none; width: 24px; }
         QComboBox QAbstractItemView {
             background-color: #0d1526; color: #cbd5e1;
@@ -179,14 +189,54 @@ def _set_combo_value(combo: QComboBox, value):
     combo.setCurrentIndex(idx if idx != -1 else 0)
 
 
+def _set_unsaved(widget: QWidget, unsaved: bool):
+    """Refresh a field's amber, edited-but-not-saved state."""
+    widget.setProperty("unsaved", unsaved)
+    widget.style().unpolish(widget)
+    widget.style().polish(widget)
+    widget.update()
+
+
 class _Toggle(QCheckBox):
-    """Checkbox drawn as an on/off switch."""
+    """Checkbox with an independently animated handle and immediate boolean state."""
     _W, _H = 40, 22
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFixedSize(self._W, self._H)
+        self._handle_position = 0.0
+        self._animation = QPropertyAnimation(self, b"handlePosition", self)
+        self._animation.setDuration(250)
+        self._animation.setEasingCurve(QEasingCurve.Type.InOutCubic)
+        self.toggled.connect(self._animate_handle)
+
+    @pyqtProperty(float)
+    def handlePosition(self):
+        return self._handle_position
+
+    @handlePosition.setter
+    def handlePosition(self, position):
+        self._handle_position = position
+        self.update()
+
+    def _animate_handle(self, checked):
+        target = 1.0 if checked else 0.0
+        if self._animation.endValue() == target and self._animation.state() == QPropertyAnimation.State.Running:
+            return
+        self._animation.stop()
+        self._animation.setStartValue(self._handle_position)
+        self._animation.setEndValue(target)
+        self._animation.start()
+
+    def checkStateSet(self):
+        super().checkStateSet()
+        # Also synchronize when callers populate controls under QSignalBlocker.
+        if hasattr(self, "_animation"):
+            self._animate_handle(self.isChecked())
+
+    def switch_colors(self):
+        return theme.toggle_colors(self.isChecked())
 
     def hitButton(self, pos):
         return self.rect().contains(pos)
@@ -194,15 +244,32 @@ class _Toggle(QCheckBox):
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        on = self.isChecked()
+        track, handle = self.switch_colors()
         p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(QColor("#2563eb" if on else ("#cbd5e1" if theme.is_light() else "#1e2d44")))
+        p.setBrush(QColor(track))
         p.drawRoundedRect(0, 0, self._W, self._H, self._H / 2, self._H / 2)
         knob = self._H - 6
-        x = self._W - knob - 3 if on else 3
-        p.setBrush(QColor("#ffffff" if on else "#64748b"))
-        p.drawEllipse(x, 3, knob, knob)
+        x = 3 + (self._W - knob - 6) * self._handle_position
+        p.setBrush(QColor(handle))
+        p.drawEllipse(QRectF(x, 3, knob, knob))
         p.end()
+
+
+class _ThemeToggle(_Toggle):
+    """The original compact switch, checked for Light and unchecked for Dark."""
+    mode_changed = pyqtSignal(bool)  # emits True when Light mode is selected
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAccessibleName(tr("Light mode"))
+        self.setToolTip(tr("Use a light colour scheme. Applies instantly."))
+        self.toggled.connect(self.mode_changed.emit)
+
+    def is_light(self) -> bool:
+        return self.isChecked()
+
+    def set_light(self, light: bool):
+        self.setChecked(light)
 
 
 def _divider() -> QFrame:
@@ -233,6 +300,9 @@ def _setting_row(name: str, desc: str, control: QWidget | None = None) -> QHBoxL
     text = QVBoxLayout()
     text.setSpacing(2)
     n = QLabel(tr(name))
+    n.setWordWrap(True)
+    n.setMinimumWidth(0)
+    n.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
     n.setStyleSheet("color: #e2e8f0; font-size: 13px; font-weight: 600;")
     text.addWidget(n)
     if desc:
@@ -246,6 +316,10 @@ def _setting_row(name: str, desc: str, control: QWidget | None = None) -> QHBoxL
 
 def _value_label(text: str, color: str = "#cbd5e1") -> QLabel:
     lbl = QLabel(text)
+    lbl.setWordWrap(True)
+    lbl.setMinimumWidth(0)
+    lbl.setMaximumWidth(340)
+    lbl.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
     lbl.setStyleSheet(f"color: {color}; font-size: 13px; font-weight: 600;")
     lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
     return lbl
@@ -278,7 +352,8 @@ class _Panel(QWidget):
         inner = QWidget()
         inner.setStyleSheet("background: transparent;")
         self.form = QVBoxLayout(inner)
-        self.form.setContentsMargins(0, 0, 16, 16)
+        # Keep content clear of the vertical scrollbar at every scale factor.
+        self.form.setContentsMargins(0, 0, 24, 16)
         self.form.setSpacing(10)
 
         t = QLabel(tr(title))
@@ -290,6 +365,10 @@ class _Panel(QWidget):
 
         scroll.setWidget(inner)
         layout.addWidget(scroll)
+
+    def discard_changes(self):
+        """Restore transient edits when the user leaves this settings subpage."""
+        pass
 
     def add_heading(self, text: str):
         lbl = QLabel(tr(text))
@@ -325,13 +404,8 @@ class _AccountPanel(_Panel):
         self.email     = _make_input("Enter email address")
         self.phone     = _make_input("Enter phone number (optional)")
 
-        # Pre-fill from the database (falls back to the logged-in user object)
-        info = adb.get_user_by_username(user.username) or {}
-        self.full_name.setText(info.get("fullname") or user.fullname or "")
         self.username.setText(user.username)
         self.username.setReadOnly(True)
-        self.email.setText(info.get("email") or user.email or "")
-        self.phone.setText(adb.get_phone(user.username))
 
         for label_text, widget, hint in [
             ("Full Name",    self.full_name, ""),
@@ -345,6 +419,45 @@ class _AccountPanel(_Panel):
                 self.form.addWidget(_hint(hint))
             self.form.addSpacing(4)
         self.form.addStretch()
+
+        self._saved_values = {}
+        self.reload_values()
+        self.full_name.textChanged.connect(self._refresh_dirty_fields)
+        self.email.textChanged.connect(self._refresh_dirty_fields)
+        self.phone.textChanged.connect(self._refresh_dirty_fields)
+
+    def _current_values(self) -> dict:
+        return {
+            "fullname": self.full_name.text(),
+            "email": self.email.text(),
+            "phone": self.phone.text(),
+        }
+
+    def reload_values(self):
+        """Load the last saved profile, without treating it as a user edit."""
+        info = adb.get_user_by_username(self.user.username) or {}
+        values = {
+            "fullname": info.get("fullname") or self.user.fullname or "",
+            "email": info.get("email") or self.user.email or "",
+            "phone": adb.get_phone(self.user.username),
+        }
+        widgets = (self.full_name, self.email, self.phone)
+        blockers = [QSignalBlocker(widget) for widget in widgets]
+        self.full_name.setText(values["fullname"])
+        self.email.setText(values["email"])
+        self.phone.setText(values["phone"])
+        del blockers
+        self._saved_values = values
+        self._refresh_dirty_fields()
+
+    def _refresh_dirty_fields(self):
+        current = self._current_values()
+        _set_unsaved(self.full_name, current["fullname"] != self._saved_values.get("fullname"))
+        _set_unsaved(self.email, current["email"] != self._saved_values.get("email"))
+        _set_unsaved(self.phone, current["phone"] != self._saved_values.get("phone"))
+
+    def discard_changes(self):
+        self.reload_values()
 
     def save(self) -> tuple[bool, str]:
         fullname = self.full_name.text().strip()
@@ -367,6 +480,8 @@ class _AccountPanel(_Panel):
             return False, "Could not update your profile."
         self.user.fullname = fullname
         self.user.email = email
+        self._saved_values = self._current_values()
+        self._refresh_dirty_fields()
         return True, ""
 
 
@@ -400,6 +515,8 @@ class _PrivacyPanel(_Panel):
         self.confirm_pw = _make_input("Confirm new password", password=True)
         for w in (self.current_pw, self.new_pw, self.confirm_pw):
             lay.addWidget(w)
+            w.textChanged.connect(
+                lambda text, field=w: _set_unsaved(field, bool(text)))
         lay.addWidget(_hint("8–12 characters. Must not contain your username or the app name, "
                             "and can't be a common password."))
         self.pw_status = QLabel("")
@@ -438,6 +555,13 @@ class _PrivacyPanel(_Panel):
                                "This can't be undone.", del_btn),
         ])
         self.form.addStretch()
+
+    def discard_changes(self):
+        for field in (self.current_pw, self.new_pw, self.confirm_pw):
+            field.clear()
+            _set_unsaved(field, False)
+        self.pw_status.clear()
+        self.pw_status.hide()
 
     def refresh_access(self):
         if self.user.is_admin:
@@ -480,6 +604,7 @@ class _PrivacyPanel(_Panel):
             return
         for w in (self.current_pw, self.new_pw, self.confirm_pw):
             w.clear()
+            _set_unsaved(w, False)
         self._show_pw_status(True, "Password updated.")
 
     def _generate_invite(self):
@@ -551,16 +676,29 @@ class _PreferencesPanel(_Panel):
     """App Preferences: appearance, general, map and data options."""
 
     light_mode_changed = pyqtSignal(bool)
+    instant_preferences_changed = pyqtSignal(dict)
 
     def __init__(self, user: User, parent=None):
         super().__init__("App Preferences", "Click Save Changes to apply.", parent)
         self.user = user
 
-        self.light_mode = _Toggle()
+        self.theme_mode = _ThemeToggle()
+        theme_control = QWidget()
+        theme_control.setStyleSheet("background: transparent;")
+        theme_row = QHBoxLayout(theme_control)
+        theme_row.setContentsMargins(0, 0, 0, 0)
+        theme_row.setSpacing(8)
+        dark_label = QLabel(tr("Dark") + "  ☾")
+        light_label = QLabel("☀  " + tr("Light"))
+        for label in (dark_label, light_label):
+            label.setStyleSheet("color: #94a3b8; font-size: 12px; font-weight: 600;")
+        theme_row.addWidget(dark_label)
+        theme_row.addWidget(self.theme_mode)
+        theme_row.addWidget(light_label)
         # Language names are shown in their own language, so they are not translated
         self.language = _make_combo(list((name, code) for code, name in i18n.LANGUAGES.items()))
         self.add_group("APPEARANCE", [
-            ("Light mode", "Use a light colour scheme. Applies instantly.", self.light_mode),
+            ("Light mode", "Use a light colour scheme. Applies instantly.", theme_control),
             ("Language", "Language used throughout the app.", self.language),
         ])
 
@@ -600,16 +738,43 @@ class _PreferencesPanel(_Panel):
         self.form.addLayout(reset_row)
         self.form.addStretch()
 
-        self.set_values(prefs.load(user.username))
-        self.light_mode.toggled.connect(self._on_light_mode)
+        self._saved_values = {}
+        self.reload_values()
 
-    def _on_light_mode(self, on: bool):
-        # Theme changes are saved and applied immediately (no Save Changes needed)
-        prefs.save(self.user.username, {"light_mode": on})
-        self.light_mode_changed.emit(on)
+        self.theme_mode.mode_changed.connect(self._on_theme_changed)
+        self.confirm_logout.toggled.connect(
+            lambda on: self._apply_toggle("confirm_logout", on))
+        self.show_sos_radius.toggled.connect(
+            lambda on: self._apply_toggle("show_sos_radius", on))
+        for combo in self._editable_combos().values():
+            combo.currentIndexChanged.connect(self._refresh_dirty_fields)
+
+    def _editable_combos(self) -> dict[str, QComboBox]:
+        return {
+            "language": self.language,
+            "startup_page": self.startup_page,
+            "time_format_24h": self.time_format,
+            "map_zoom": self.map_zoom,
+            "retention_hours": self.retention,
+        }
+
+    def _on_theme_changed(self, light: bool):
+        # Theme changes remain an instant setting.
+        prefs.save(self.user.username, {"light_mode": light})
+        self.light_mode_changed.emit(light)
+        self.instant_preferences_changed.emit(prefs.load(self.user.username))
+
+    def _apply_toggle(self, key: str, on: bool):
+        # Switches intentionally apply and persist immediately.
+        prefs.save(self.user.username, {key: on})
+        self.instant_preferences_changed.emit(prefs.load(self.user.username))
 
     def set_values(self, p: dict):
-        self.light_mode.setChecked(p["light_mode"])
+        """Populate controls without firing instant-apply settings."""
+        blockers = [QSignalBlocker(self.theme_mode),
+                    QSignalBlocker(self.confirm_logout),
+                    QSignalBlocker(self.show_sos_radius)]
+        self.theme_mode.set_light(p["light_mode"])
         _set_combo_value(self.language, p["language"])
         _set_combo_value(self.startup_page, p["startup_page"])
         _set_combo_value(self.time_format, p["time_format_24h"])
@@ -617,10 +782,11 @@ class _PreferencesPanel(_Panel):
         _set_combo_value(self.map_zoom, p["map_zoom"])
         self.show_sos_radius.setChecked(p["show_sos_radius"])
         _set_combo_value(self.retention, p["retention_hours"])
+        del blockers
 
     def values(self) -> dict:
         return {
-            "light_mode":      self.light_mode.isChecked(),
+            "light_mode":      self.theme_mode.is_light(),
             "language":        self.language.currentData(),
             "startup_page":    self.startup_page.currentData(),
             "time_format_24h": self.time_format.currentData(),
@@ -630,8 +796,38 @@ class _PreferencesPanel(_Panel):
             "retention_hours": self.retention.currentData(),
         }
 
+    def reload_values(self):
+        values = prefs.load(self.user.username)
+        self.set_values(values)
+        self._saved_values = values
+        self._refresh_dirty_fields()
+
+    def _refresh_dirty_fields(self):
+        for key, combo in self._editable_combos().items():
+            _set_unsaved(combo, combo.currentData() != self._saved_values.get(key))
+
+    def save(self) -> dict:
+        # Read instant values from storage so a page save cannot undo a switch.
+        values = prefs.load(self.user.username)
+        for key, combo in self._editable_combos().items():
+            values[key] = combo.currentData()
+        prefs.save(self.user.username, values)
+        self._saved_values = values.copy()
+        self._refresh_dirty_fields()
+        return values
+
+    def discard_changes(self):
+        self.reload_values()
+
     def _restore_defaults(self):
-        self.set_values({k: default for k, (default, _) in prefs.DEFAULTS.items()})
+        defaults = {k: default for k, (default, _) in prefs.DEFAULTS.items()}
+        # Switches apply now; dropdowns remain amber until Save.
+        self.theme_mode.set_light(defaults["light_mode"])
+        self.confirm_logout.setChecked(defaults["confirm_logout"])
+        self.show_sos_radius.setChecked(defaults["show_sos_radius"])
+        for key, combo in self._editable_combos().items():
+            _set_combo_value(combo, defaults[key])
+        self._refresh_dirty_fields()
 
 
 # ───────────────────────────────────────────────────────
@@ -679,6 +875,21 @@ class _ContactsPanel(_Panel):
         self.form.addStretch()
 
         self._load()
+        self.name_in.textChanged.connect(
+            lambda text: _set_unsaved(self.name_in, bool(text)))
+        self.phone_in.textChanged.connect(
+            lambda text: _set_unsaved(self.phone_in, bool(text)))
+        self.rel_in.currentIndexChanged.connect(
+            lambda index: _set_unsaved(self.rel_in, index != 0))
+
+    def discard_changes(self):
+        self.name_in.clear()
+        self.phone_in.clear()
+        self.rel_in.setCurrentIndex(0)
+        self.add_status.clear()
+        self.add_status.hide()
+        for field in (self.name_in, self.phone_in, self.rel_in):
+            _set_unsaved(field, False)
 
     def _load(self):
         while self.list_lay.count():
@@ -734,6 +945,8 @@ class _ContactsPanel(_Panel):
             self.name_in.clear()
             self.phone_in.clear()
             self.rel_in.setCurrentIndex(0)
+            for field in (self.name_in, self.phone_in, self.rel_in):
+                _set_unsaved(field, False)
             self._load()
 
     def _remove(self, contact_id: int, name: str):
@@ -828,7 +1041,7 @@ class SettingsPage(QWidget):
     preferences_changed = pyqtSignal(dict)   # emitted after App Preferences are saved
     profile_changed = pyqtSignal()           # emitted after the account profile is saved
     account_deleted = pyqtSignal()           # emitted after the user deletes their account
-    light_mode_changed = pyqtSignal(bool)    # emitted when the Light mode switch is flipped
+    light_mode_changed = pyqtSignal(bool)    # emitted when the theme switch changes
     language_changed = pyqtSignal(str)       # emitted when a different language is saved
 
     _SECTIONS = [
@@ -869,7 +1082,7 @@ class SettingsPage(QWidget):
                 color: #cbd5e1;
             }
         """)
-        back_btn.clicked.connect(self.back_requested.emit)
+        back_btn.clicked.connect(self._go_back)
 
         page_title = QLabel(tr("Settings"))
         page_title.setStyleSheet(
@@ -954,6 +1167,8 @@ class SettingsPage(QWidget):
             self._panels[label] = panel
         self._panels["Privacy & Security"].account_deleted.connect(self.account_deleted.emit)
         self._panels["App Preferences"].light_mode_changed.connect(self.light_mode_changed.emit)
+        self._panels["App Preferences"].instant_preferences_changed.connect(
+            self.preferences_changed.emit)
 
         content_lay.addWidget(self._stack)
 
@@ -962,31 +1177,49 @@ class SettingsPage(QWidget):
         root.addLayout(body, stretch=1)
 
         # Default to Account tab
+        self._current_section = None
         self.show_section("Account")
 
     def show_section(self, label: str):
         """Switch to a named section tab."""
+        if self._current_section and self._current_section != label:
+            self._panels[self._current_section].discard_changes()
         for lbl, btn in self._section_btns.items():
             btn.set_active(lbl == label)
         panel = self._panels.get(label)
         if panel:
             self._stack.setCurrentWidget(panel)
+            self._current_section = label
         # Only Account and App Preferences use the Save button
         self.save_btn.setVisible(label in ("Account", "App Preferences"))
 
     def _save_changes(self):
-        ok, msg = self._panels["Account"].save()
-        if not ok:
-            self.show_section("Account")
-            i18n.warn(self, tr("Couldn't Save"), tr(msg))
+        """Save only the panel the user is currently viewing."""
+        if self._current_section == "Account":
+            ok, msg = self._panels["Account"].save()
+            if not ok:
+                i18n.warn(self, tr("Couldn't Save"), tr(msg))
+                return
+            self.profile_changed.emit()
+            i18n.info(self, tr("Saved"), tr("Your settings have been saved."))
             return
-        self.profile_changed.emit()
 
-        values = self._panels["App Preferences"].values()
-        prefs.save(self.user.username, values)
-        self.preferences_changed.emit(values)
-        if values["language"] != i18n.get_language():
-            # The main window rebuilds itself in the new language
-            self.language_changed.emit(values["language"])
-            return
-        i18n.info(self, tr("Saved"), tr("Your settings have been saved."))
+        if self._current_section == "App Preferences":
+            values = self._panels["App Preferences"].save()
+            self.preferences_changed.emit(values)
+            if values["language"] != i18n.get_language():
+                # The main window rebuilds itself in the new language
+                self.language_changed.emit(values["language"])
+                return
+            i18n.info(self, tr("Saved"), tr("Your settings have been saved."))
+
+    def _go_back(self):
+        if self._current_section:
+            self._panels[self._current_section].discard_changes()
+        self.back_requested.emit()
+
+    def hideEvent(self, event):
+        """Do not retain drafts when Settings is left through the sidebar."""
+        if self._current_section:
+            self._panels[self._current_section].discard_changes()
+        super().hideEvent(event)

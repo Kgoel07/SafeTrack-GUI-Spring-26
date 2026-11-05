@@ -7,7 +7,7 @@ from PyQt6.QtCore import QSettings
 # key: (default, type)
 DEFAULTS = {
     "light_mode":        (False, bool),  # light colour scheme for the main window
-    "language":          ("en", str),    # "en" | "sw" – saved only; translations not implemented yet
+    "language":          ("en", str),    # "en" | "sw"
     "startup_page":      ("Map", str),   # "Map" | "Nodes" | "History"
     "map_zoom":          (14, int),      # folium zoom level for the map page
     "show_sos_radius":   (True, bool),   # red circle around SOS nodes on the map

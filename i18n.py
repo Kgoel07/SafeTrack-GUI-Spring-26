@@ -283,8 +283,15 @@ SW = {
     # App Preferences
     "Click Save Changes to apply.": "Bofya Hifadhi Mabadiliko ili kutumia.",
     "APPEARANCE": "MWONEKANO",
+    "Theme": "Mandhari",
     "Light mode": "Hali ya mwanga",
     "Use a light colour scheme. Applies instantly.": "Tumia rangi nyepesi. Inatumika papo hapo.",
+    "Light": "Mwanga",
+    "Dark": "Giza",
+    "Choose Light on the left or Dark on the right. Applies instantly.":
+        "Chagua Mwanga kushoto au Giza kulia. Inatumika papo hapo.",
+    "Light theme on the left, dark theme on the right.":
+        "Mandhari ya mwanga kushoto, mandhari ya giza kulia.",
     "Language": "Lugha",
     "Language used throughout the app.": "Lugha inayotumika katika programu nzima.",
     "GENERAL": "JUMLA",

@@ -50,5 +50,5 @@ nodes.db
 # Fernet encryption keys
 *.key
 
-# Bug File
-Bugs.txt
+# Local Text files
+*.txt

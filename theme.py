@@ -81,6 +81,13 @@ def is_light() -> bool:
     return _light
 
 
+def toggle_colors(checked: bool) -> tuple[str, str]:
+    """Track and handle colors for painted switches, using the existing palette."""
+    return ("#2563eb" if checked else
+            (_COLOR_MAP["#1e2d44"] if is_light() else "#1e2d44"),
+            "#ffffff" if checked else "#64748b")
+
+
 def _translate_block(block: str) -> str:
     lower = block.lower()
     keep_white = any(re.search(r"background(-color)?\s*:\s*" + c, lower) for c in _ACCENT_BGS)
